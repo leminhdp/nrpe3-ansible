@@ -1,0 +1,10 @@
+---
+includedir: "/usr/local/nagios/etc/nrpe"
+datadir: "/root/data"
+plugindir: "/usr/local/nagios/libexec"
+nrpedest: "/home/software"
+nrpesrc: "nrpe-nrpe-3.2.1"
+nrpesrc1: "nagios-plugins-release-2.2.1"
+context: "sudo echo 'nagios ALL=NOPASSWD: /usr/local/nagios/libexec/* *' >> /etc/sudoers"
+nagios_group: nagios
+nagios_user: nagios
