@@ -1,0 +1,115 @@
+---
+- hosts: app
+  remote_user: root
+  become: yes
+  vars_files:
+   - vars/vars.yml
+  tasks:
+   - name: Create dir include remote machine.
+     file:
+      path: "{{ includedir }}"
+      state: directory
+      mode: 0755
+   - name : Copy file to remote machine.
+     copy:
+      src: "{{ datadir }}/{{ item }}"
+      dest: "{{ includedir }}"
+      owner: root
+      group: root
+      mode: 0775
+     with_items:
+      - "vnpay.cfg"
+      - "vnpay_linux.cfg"
+      - "vnpay_oracle.cfg"
+   - name: Create nrpedest
+     file:
+      path: "{{ nrpedest }}"
+      state: directory
+      mode: 0755
+   - name: Update repositories cache and install packages
+     apt:
+       name: "{{ item }}"
+       state: present
+       update_cache: yes
+     with_items:
+      - "autoconf"
+      - "automake" 
+      - "gcc" 
+      - "libc6" 
+      - "libmcrypt-dev" 
+      - "make" 
+      - "libssl-dev"
+      - "wget" 
+      - "openssl"
+      - "gettext"
+      - "bc" 
+      - "gawk" 
+      - "dc" 
+      - "build-essential" 
+      - "snmp" 
+      - "libnet-snmp-perl"
+   - name: Installing CPANM
+     command: cpan install Sys::Statistics::Linux
+   - name: Unpack NRPE source files
+     unarchive:
+       src: /root/data/nrpe.tar.gz
+       dest: "{{ nrpedest }}"
+   - name: Configure NRPE
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";./configure --enable-command-args
+   - name: Make All  NRPE
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make all
+   - name: Make Install Group Users
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install-groups-users
+   - name: Make NRPE install
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install
+   - name: Make NRPE config
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install-config
+   - name: Make NRPE init
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install-init
+   - name: edit /etc/service
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";sh -c "echo >> /etc/services"
+   - name: edit /etc/service
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";sh -c "sudo echo '# Nagios services' >> /etc/services"
+   - name: Edit /etc/service
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";sh -c "sudo echo 'nrpe    5666/tcp' >> /etc/services"
+   - name: Edit /etc/sudoers
+     command: sh -c "{{ context }}"
+     notify:
+     - restart nrpe
+   - name: Unpack NRPE Plugin source files
+     unarchive:
+       src: /root/data/nagios-plugins.tar.gz
+       dest: "{{ nrpedest }}"
+   - name: Configure Tool NRPE Plugin
+     shell: cd "{{ nrpedest }}/{{ nrpesrc1 }}";./tools/setup
+   - name: Configure NRPE Plugin1
+     shell: cd "{{ nrpedest }}/{{ nrpesrc1 }}";./configure
+   - name: Make Plugin
+     shell: cd "{{ nrpedest }}/{{ nrpesrc1 }}";make
+   - name: Make Install NRPE Plugin
+     shell: cd "{{ nrpedest }}/{{ nrpesrc1 }}";make install
+     notify:
+     - restart nrpe
+   - name : Copy file to remote machine.
+     copy:
+      src: "{{ datadir }}/{{ item }}"
+      dest: "{{ plugindir }}"
+      owner: root
+      group: root
+      mode: 0775
+     with_items:
+      - "check_linux_stats.pl"
+   - template:
+      src: /root/data/nrpe.cfg.j2
+      dest: /usr/local/nagios/etc/nrpe.cfg
+      owner: nagios
+      group: nagios
+      mode: 0644
+     notify: 
+     - restart nrpe
+  handlers:
+   - name: restart nrpe
+     service:
+      name: nrpe
+      state: restarted
+     # enabled: yes
