@@ -1,0 +1,35 @@
+---
+- hosts: app
+  remote_user: dieple
+  become: yes
+  vars_files:
+   - vars/vars.yml
+  tasks:
+#   - name: Copy file to remote machine.
+#    copy:
+#      src: /home/ansible/nrpe.tar.gz
+#      dest: "{{ nrpedest }}"
+#      owner: ansible
+#      group: root
+#      mode: 0755
+   - name: Create nrpedest
+     file: 
+      path: "{{ nrpedest }}" 
+      state: directory
+      mode: 0755
+   - name: Unpack NRPE source files
+     unarchive:
+       src: /home/ansible/nrpe.tar.gz
+       dest: "{{ nrpedest }}"
+   - name: Configure NRPE
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";./configure 
+   - name: Make NRPE
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make all
+   - name: Make NRPE
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install 
+     notify: reload Xinetd
+  handlers:
+   - name: reload Xinetd
+     service:
+      name: xinetd
+      state: reloaded
