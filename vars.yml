@@ -1,0 +1,12 @@
+---
+user: "ansible"
+domain: "ansible-laravel"
+inventory_hostname: "192.168.206.176"
+fpdn: "ansible-laravel.local"
+
+home_directory: "/home/ansible"
+
+laravel_project_name: "ansible-laravel"
+laravel_project_root: "/home/ansible/apps/ansible-laravel"
+laravel_project_symlink: "/var/www/html/ansible-laravel"
+laravel_project_public: "/var/www/html/ansible-laravel/public"

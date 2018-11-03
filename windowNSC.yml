@@ -1,0 +1,22 @@
+---
+- hosts: windows
+#  remote_users: administrator
+  tasks:
+   - name: Create directory structure
+     win_file:
+      path: C:\Temp\NSclient
+      state: directory
+   - name: Copy a single file keeping the filename
+     win_copy:
+      src: /home/software/NSCP-0.5.2.35-x64.msi
+      dest: C:\Temp\NSclient
+   - name: Install an MSI, and wait for it to complete before continuing
+     win_msi:
+      path: C:\Temp\NSclient\NSCP-0.5.2.35-x64.msi
+      wait: yes
+     notify: Restart NSclient
+  handlers:
+   - name: Restart NSclient
+     win_service:
+       name: nscp
+       state: restarted

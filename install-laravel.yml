@@ -1,0 +1,198 @@
+---
+- hosts: app
+  become: yes
+
+  vars_files:
+    - vars.yml
+    - secrets/database.yml
+
+  pre_tasks:
+    - name: Update packages information.
+      apt:
+        update_cache: yes
+        cache_valid_time:  3600
+
+    - name: Enable UFW.
+      ufw:
+        state: enabled
+
+    - name: Allow SSH connections.
+      ufw:
+        name: OpenSSH
+        rule: allow
+
+  handlers:
+    - name: reload Nginx
+      service:
+        name: nginx
+        state: reloaded
+
+  tasks:
+    - name: Install software for apt repository management.
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - python3-apt
+        - python3-pycurl
+
+    - name: Add ondrej repository for latest version of PHP.
+      apt_repository:
+        repo: ppa:ondrej/php
+        update_cache: yes
+
+    - name: Install NGINX, MySQL, PHP, PHP extensions and other dependencies.
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - git
+        - curl
+        - unzip
+        - openssl
+        - nginx
+        - php7.1-common
+        - php7.1-cli
+        - php7.1-dev
+        - php7.1-gd
+        - php7.1-curl
+        - php7.1-json
+        - php7.1-opcache
+        - php7.1-xml
+        - php7.1-mbstring
+        - php7.1-pdo
+        - php7.1-mysql
+        - php7.1-zip
+        - php7.1-fpm
+        - php-apcu
+        - libpcre3-dev
+        - python-mysqldb
+        - mysql-server
+
+    - name: Start NGINX, MySQL services.
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      with_items:
+        - nginx
+        - mysql
+
+    - name: Adjust firewall to allow access to the nginx service.
+      ufw:
+        name: Nginx HTTP
+        rule: allow
+
+    - name: Remove the MySQL test database.
+      mysql_db:
+        db: test
+        state: absent
+
+    - name: Create new database for the application.
+      mysql_db:
+        db: "{{ domain }}"
+        state: present
+
+    - name: Create new MySQL user for the application.
+      mysql_user:
+        name: "{{ domain }}"
+        password: "{{ db_user_password }}"
+        priv: "{{ domain }}.*:ALL"
+        host: localhost
+        state: present
+
+    - name: Download Composer installer.
+      get_url:
+        url: https://getcomposer.org/installer
+        dest: /tmp/composer-installer.php
+        mode: 0755
+
+    - name: Run Composer installer
+      command: php composer-installer.php
+      args:
+        chdir: /tmp
+        creates: /usr/local/bin/composer
+
+    - name: Move Composer into globally-accessible location.
+      shell: mv /tmp/composer.phar /usr/local/bin/composer
+      args:
+        creates: /usr/local/bin/composer
+
+    - name: Install Laravel Installer via Composer.
+      shell: /usr/local/bin/composer global require "laravel/installer"
+      args:
+        creates: "{{ home_directory }}/.config/composer/vendor/bin/laravel"
+      become: false
+
+    - name: Create symlink for laravel installer.
+      file:
+        src: "{{ home_directory }}/.config/composer/vendor/bin/laravel"
+        dest: /usr/local/bin/laravel
+        state: link
+
+    - name: Create a new Laravel project.
+      command: "laravel new {{ laravel_project_name }}"
+      args:
+        chdir: "{{ home_directory }}/apps"
+        creates: "{{ laravel_project_root }}/artisan"
+
+    - name: Install Composer packages for Laravel application.
+      command: composer install
+      args:
+        chdir: "{{ laravel_project_root }}"
+        creates: "{{ laravel_project_root }}/vendor"
+
+    - name: Generate Laravel application encryption key.
+      command: php artisan key:generate
+      args:
+        chdir: "{{ laravel_project_root }}"
+
+    - name: Update environment file.
+      lineinfile:
+        path: "{{ laravel_project_root }}/.env"
+        regexp: "{{ item.regex }}"
+        line: "{{ item.value }}"
+        state: present
+      with_items:
+        - { regex: '^DB_DATABASE', value: 'DB_DATABASE={{ domain }}' }
+        - { regex: '^DB_USERNAME', value: 'DB_USERNAME={{ domain }}' }
+        - { regex: '^DB_PASSWORD', value: 'DB_PASSWORD={{ db_user_password }}' }
+
+    - name: Change permission of some directories.
+      file:
+        path: "{{ laravel_project_root }}/{{ item }}"
+        owner: "www-data"
+        group: "www-data"
+        mode: "u+x,g+x"
+        recurse: yes
+      with_items:
+        - bootstrap
+        - storage
+
+    - name: Create symlink for laravel application.
+      file:
+        src: "{{ laravel_project_root }}"
+        dest: "{{ laravel_project_symlink }}"
+        state: link
+
+    - name: Remove default configuration file in sites-enabled directory.
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: reload Nginx
+
+    - name: Add NGINX configuration file for Laravel application.
+      template:
+        src: templates/nginx/ansible-laravel.conf.j2
+        dest: "/etc/nginx/sites-available/{{ domain }}.conf"
+        owner: root
+        group: root
+        mode: 0644
+      notify: reload Nginx
+
+    - name: Create new symbolic link for the configuration file.
+      file:
+        src: "/etc/nginx/sites-available/{{ domain }}.conf"
+        dest: /etc/nginx/sites-enabled/default.conf
+        state: link
+      notify: reload Nginx

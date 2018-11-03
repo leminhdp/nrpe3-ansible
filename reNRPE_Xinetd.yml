@@ -1,0 +1,52 @@
+---
+- hosts: app
+  remote_user: ansible
+  become: yes
+  vars_files:
+   - vars/vars.yml
+  tasks:
+   - name: Remove Xinetd file to remote machine.
+     file:
+      path: /etc/xinetd.d/nrpe
+      state: absent
+     notify: 
+     - reload Xinetd
+   - name: Create nrpedest
+     file:
+      path: "{{ nrpedest }}"
+      state: directory
+      mode: 0755
+   - name: Unpack NRPE source files
+     unarchive:
+       src: /home/ansible/nrpe.tar.gz
+       dest: "{{ nrpedest }}"
+   - name: Configure NRPE
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";./configure
+   - name: Make NRPE
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make all
+   - name: Make NRPE install
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install
+   - name: Make NRPE config
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install-config
+   - name: Make NRPE init
+     shell: cd "{{ nrpedest }}/{{ nrpesrc }}";make install-init
+     notify:
+     - restart nrpe
+   - template:
+      src: /home/ansible/nrpe.cfg.j2
+      dest: /usr/local/nagios/etc/nrpe.cfg
+      owner: nagios
+      group: nagios
+      mode: 0644
+     notify: 
+     - restart nrpe
+  handlers:
+   - name: restart nrpe
+     service:
+      name: nrpe
+      state: restarted
+     # enabled: yes
+   - name: reload Xinetd
+     service:
+      name: xinetd
+      state: reloaded
